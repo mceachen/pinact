@@ -147,31 +147,20 @@ func (c *Controller) getLatestVersion(ctx context.Context, logE *logrus.Entry, o
 	return c.getLatestVersionFromTags(ctx, logE, owner, repo)
 }
 
-// compare evaluates a tag against the current latest version.
-// It attempts to parse the tag as semantic version and compares it.
-// If parsing fails, it falls back to string comparison.
+// compare evaluates two semantic versions and returns the greater one.
+// It compares two version.Version instances and returns the greater version.
+// If latestSemver is nil, returns v.
 //
 // Parameters:
-//   - latestSemver: current latest semantic version
-//   - latestVersion: current latest version string
-//   - tag: new tag to compare
+//   - latestSemver: current latest semantic version (may be nil)
+//   - v: new version to compare
 //
-// Returns the updated latest semantic version, latest version string, and any error.
-func compare(latestSemver *version.Version, latestVersion, tag string) (*version.Version, string, error) {
-	v, err := version.NewVersion(tag)
-	if err != nil {
-		if tag > latestVersion {
-			latestVersion = tag
-		}
-		return latestSemver, latestVersion, fmt.Errorf("parse a tag as a semver: %w", err)
+// Returns the greater of the two versions.
+func compare(latestSemver, v *version.Version) *version.Version {
+	if latestSemver == nil || v.GreaterThan(latestSemver) {
+		return v
 	}
-	if latestSemver != nil {
-		if v.GreaterThan(latestSemver) {
-			return v, "", nil
-		}
-		return latestSemver, "", nil
-	}
-	return v, "", nil
+	return latestSemver
 }
 
 // getLatestVersionFromReleases finds the latest version from repository releases.
@@ -200,14 +189,16 @@ func (c *Controller) getLatestVersionFromReleases(ctx context.Context, logE *log
 			// Ignore prerelease
 			continue
 		}
+
 		tag := release.GetTagName()
-		ls, lv, err := compare(latestSemver, latestVersion, tag)
-		latestSemver = ls
-		latestVersion = lv
+		v, err := version.NewVersion(tag)
 		if err != nil {
 			logerr.WithError(logE, err).WithField("tag", tag).Debug("compare tags")
 			continue
 		}
+
+		latestSemver = compare(latestSemver, v)
+		latestVersion = latestSemver.Original()
 	}
 	if latestSemver != nil {
 		return latestSemver.Original(), nil
@@ -238,13 +229,19 @@ func (c *Controller) getLatestVersionFromTags(ctx context.Context, logE *logrus.
 	latestVersion := ""
 	for _, tag := range tags {
 		t := tag.GetName()
-		ls, lv, err := compare(latestSemver, latestVersion, t)
-		latestSemver = ls
-		latestVersion = lv
+
+		v, err := version.NewVersion(t)
 		if err != nil {
-			logerr.WithError(logE, err).WithField("tag", tag).Debug("compare tags")
+			logerr.WithError(logE, err).WithField("tag", t).Debug("compare tags")
 			continue
 		}
+		if !c.param.Prerelease && v.Prerelease() != "" {
+			// Ignore prerelease
+			continue
+		}
+
+		latestSemver = compare(latestSemver, v)
+		latestVersion = latestSemver.Original()
 	}
 	if latestSemver != nil {
 		return latestSemver.Original(), nil
