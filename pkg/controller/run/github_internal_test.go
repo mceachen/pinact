@@ -10,144 +10,68 @@ import (
 	"github.com/suzuki-shunsuke/pinact/v3/pkg/github"
 )
 
-func Test_compare(t *testing.T) { //nolint:funlen
+func Test_compare(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name              string
-		latestSemver      *version.Version
-		latestVersion     string
-		tag               string
-		wantSemver        string
-		wantLatestVersion string
-		wantErr           bool
+		name         string
+		latestSemver *version.Version
+		newVersion   *version.Version
+		wantSemver   string
 	}{
 		{
-			name:              "new semver is greater than current semver",
-			latestSemver:      version.Must(version.NewVersion("1.0.0")),
-			latestVersion:     "",
-			tag:               "2.0.0",
-			wantSemver:        "2.0.0",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "new semver is greater than current semver",
+			latestSemver: version.Must(version.NewVersion("1.0.0")),
+			newVersion:   version.Must(version.NewVersion("2.0.0")),
+			wantSemver:   "2.0.0",
 		},
 		{
-			name:              "new semver is less than current semver",
-			latestSemver:      version.Must(version.NewVersion("2.0.0")),
-			latestVersion:     "",
-			tag:               "1.0.0",
-			wantSemver:        "2.0.0",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "new semver is less than current semver",
+			latestSemver: version.Must(version.NewVersion("2.0.0")),
+			newVersion:   version.Must(version.NewVersion("1.0.0")),
+			wantSemver:   "2.0.0",
 		},
 		{
-			name:              "new semver equals current semver",
-			latestSemver:      version.Must(version.NewVersion("1.0.0")),
-			latestVersion:     "",
-			tag:               "1.0.0",
-			wantSemver:        "1.0.0",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "new semver equals current semver",
+			latestSemver: version.Must(version.NewVersion("1.0.0")),
+			newVersion:   version.Must(version.NewVersion("1.0.0")),
+			wantSemver:   "1.0.0",
 		},
 		{
-			name:              "first semver with nil latest",
-			latestSemver:      nil,
-			latestVersion:     "",
-			tag:               "1.2.3",
-			wantSemver:        "1.2.3",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "first semver with nil latest",
+			latestSemver: nil,
+			newVersion:   version.Must(version.NewVersion("1.2.3")),
+			wantSemver:   "1.2.3",
 		},
 		{
-			name:              "semver with v prefix",
-			latestSemver:      nil,
-			latestVersion:     "",
-			tag:               "v1.2.3",
-			wantSemver:        "v1.2.3",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "semver with v prefix",
+			latestSemver: nil,
+			newVersion:   version.Must(version.NewVersion("v1.2.3")),
+			wantSemver:   "v1.2.3",
 		},
 		{
-			name:              "invalid semver with greater string comparison",
-			latestSemver:      nil,
-			latestVersion:     "main",
-			tag:               "release",
-			wantSemver:        "",
-			wantLatestVersion: "release",
-			wantErr:           true,
+			name:         "compare with prerelease versions",
+			latestSemver: version.Must(version.NewVersion("1.0.0-alpha")),
+			newVersion:   version.Must(version.NewVersion("1.0.0")),
+			wantSemver:   "1.0.0",
 		},
 		{
-			name:              "invalid semver with lesser string comparison",
-			latestSemver:      nil,
-			latestVersion:     "release",
-			tag:               "main",
-			wantSemver:        "",
-			wantLatestVersion: "release",
-			wantErr:           true,
-		},
-		{
-			name:              "invalid semver as first tag",
-			latestSemver:      nil,
-			latestVersion:     "",
-			tag:               "not-a-version",
-			wantSemver:        "",
-			wantLatestVersion: "not-a-version",
-			wantErr:           true,
-		},
-		{
-			name:              "invalid tag with existing semver",
-			latestSemver:      version.Must(version.NewVersion("1.0.0")),
-			latestVersion:     "",
-			tag:               "invalid",
-			wantSemver:        "1.0.0",
-			wantLatestVersion: "invalid",
-			wantErr:           true,
-		},
-		{
-			name:              "compare with prerelease versions",
-			latestSemver:      version.Must(version.NewVersion("1.0.0-alpha")),
-			latestVersion:     "",
-			tag:               "1.0.0",
-			wantSemver:        "1.0.0",
-			wantLatestVersion: "",
-			wantErr:           false,
-		},
-		{
-			name:              "compare with build metadata",
-			latestSemver:      version.Must(version.NewVersion("1.0.0+build.1")),
-			latestVersion:     "",
-			tag:               "1.0.0+build.2",
-			wantSemver:        "1.0.0+build.1",
-			wantLatestVersion: "",
-			wantErr:           false,
+			name:         "compare with build metadata",
+			latestSemver: version.Must(version.NewVersion("1.0.0+build.1")),
+			newVersion:   version.Must(version.NewVersion("1.0.0+build.2")),
+			wantSemver:   "1.0.0+build.1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotSemver, gotLatestVersion, err := compare(tt.latestSemver, tt.latestVersion, tt.tag)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("compare() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			gotSemver := compare(tt.latestSemver, tt.newVersion)
 
 			// Check semver result
-			if tt.wantSemver == "" {
-				if gotSemver != nil {
-					t.Errorf("compare() gotSemver = %v, want nil", gotSemver)
-				}
-			} else {
-				if gotSemver == nil {
-					t.Errorf("compare() gotSemver = nil, want %v", tt.wantSemver)
-				} else if gotSemver.Original() != tt.wantSemver {
-					t.Errorf("compare() gotSemver = %v, want %v", gotSemver.Original(), tt.wantSemver)
-				}
-			}
-
-			// Check latest version string result
-			if gotLatestVersion != tt.wantLatestVersion {
-				t.Errorf("compare() gotLatestVersion = %v, want %v", gotLatestVersion, tt.wantLatestVersion)
+			if gotSemver == nil {
+				t.Errorf("compare() gotSemver = nil, want %v", tt.wantSemver)
+			} else if gotSemver.Original() != tt.wantSemver {
+				t.Errorf("compare() gotSemver = %v, want %v", gotSemver.Original(), tt.wantSemver)
 			}
 		})
 	}
@@ -215,13 +139,13 @@ func TestController_getLatestVersionFromReleases(t *testing.T) { //nolint:funlen
 			wantErr:     false,
 		},
 		{
-			name: "only invalid versions - returns latest by string comparison",
+			name: "only invalid versions - returns empty string",
 			releases: []*github.RepositoryRelease{
 				{TagName: github.Ptr("main")},
 				{TagName: github.Ptr("release")},
 				{TagName: github.Ptr("develop")},
 			},
-			wantVersion: "release",
+			wantVersion: "",
 			wantErr:     false,
 		},
 		{
@@ -295,6 +219,7 @@ func TestController_getLatestVersionFromReleases(t *testing.T) { //nolint:funlen
 
 			c := &Controller{
 				repositoriesService: mockRepo,
+				param:               &ParamRun{Prerelease: false},
 			}
 
 			ctx := t.Context()
@@ -352,13 +277,13 @@ func TestController_getLatestVersionFromTags(t *testing.T) { //nolint:funlen
 			wantErr:     false,
 		},
 		{
-			name: "only invalid versions - returns latest by string comparison",
+			name: "only invalid versions - returns empty string",
 			tags: []*github.RepositoryTag{
 				{Name: github.Ptr("main")},
 				{Name: github.Ptr("release")},
 				{Name: github.Ptr("develop")},
 			},
-			wantVersion: "release",
+			wantVersion: "",
 			wantErr:     false,
 		},
 		{
@@ -452,6 +377,7 @@ func TestController_getLatestVersionFromTags(t *testing.T) { //nolint:funlen
 
 			c := &Controller{
 				repositoriesService: mockRepo,
+				param:               &ParamRun{Prerelease: false},
 			}
 
 			ctx := t.Context()
